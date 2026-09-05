@@ -1,4 +1,5 @@
 #include "test_common.hpp"
+#include <latch>
 
 struct ThreadResult {
     std::vector<CandidateId> eligible;
@@ -22,8 +23,10 @@ TESTCASE(concurrent_schedule_commit_handoff) {
     TestBroker broker;
     std::vector<std::thread> threads;
     threads.reserve(kThreads);
+    std::latch start(kThreads);
     for (int t = 0; t < kThreads; ++t) {
         threads.emplace_back([&, t]() {
+            start.arrive_and_wait();
             try {
                 AlwaysReadyDependency dep;
                 AllowAllPolicy pol;

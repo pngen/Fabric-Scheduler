@@ -69,23 +69,21 @@ inline int run_all(const char* suite) {
         }                                                                   \
     } while (0)
 
-#define CHECK_THROWS_CODE(expr, code)                                       \
-    do {                                                                    \
-        bool _caught = false;                                               \
-        try { (void)(expr); }                                               \
-        catch (const fabric::FabricError& e) { _caught = true; CHECK(e.code() == (code)); } \
-        catch (...) { CHECK(!"expected FabricError"); }                     \
-        CHECK(_caught);                                                     \
-    } while (0)
-
-#define CHECK_THROWS_FABRIC(expr)                                           \
-    do {                                                                    \
-        bool _caught = false;                                               \
-        try { (void)(expr); }                                               \
-        catch (const fabric::FabricError&) { _caught = true; }              \
-        catch (...) { CHECK(!"expected FabricError"); }                     \
-        CHECK(_caught);                                                     \
-    } while (0)
+// Robust throw-checking helper. A function template + lambda avoids the
+// MSVC macro re-expansion quirk that breaks function-style casts in a
+// parenthesised macro argument.
+template<typename F>
+inline void expect_fabric_error(F&& fn, fabric::ErrorCode code, const char* what) {
+    bool caught = false;
+    try { fn(); }
+    catch (const fabric::FabricError& e) {
+        caught = true;
+        if (e.code() != code) {
+            throw std::runtime_error(std::string(what) + " : unexpected error code");
+        }
+    }
+    if (!caught) throw std::runtime_error(std::string(what) + " : did not throw FabricError");
+}
 
 // --- reusable adapters ----------------------------------------------------
 class NotReadyDependency final : public DependencyView {

@@ -1,2 +1,8 @@
 add_executable(fabric_inspect fabric_inspect.cpp)
 target_link_libraries(fabric_inspect PRIVATE FabricScheduler::FabricScheduler)
+
+add_executable(coordinator_main coordinator_main.cpp)
+target_link_libraries(coordinator_main PRIVATE FabricScheduler::FabricScheduler)
+
+add_executable(worker_main worker_main.cpp)
+target_link_libraries(worker_main PRIVATE FabricScheduler::FabricScheduler)

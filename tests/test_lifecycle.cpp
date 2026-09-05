@@ -84,7 +84,7 @@ TESTCASE(stale_authority_after_epoch_bump) {
     PlacementPlanId pid = d.plan.planId;
     CHECK(sched.epoch() == CoordinatorEpoch(1));
     CHECK(sched.current_authority() == AuthorityGeneration(1));
-    CHECK_THROWS_CODE(sched.set_epoch(CoordinatorEpoch(0)), ErrorCode::StaleAuthority);
+    expect_fabric_error([&]{ sched.set_epoch(CoordinatorEpoch(0)); }, ErrorCode::StaleAuthority, "epoch lower");
     sched.set_epoch(CoordinatorEpoch(2));
     CHECK(sched.epoch() == CoordinatorEpoch(2));
     CHECK(sched.current_authority() == AuthorityGeneration(2));
@@ -101,11 +101,11 @@ TESTCASE(fenced_worker_and_source_rejected) {
     Scheduler sched(default_config());
     sched.fence_worker(WorkerBootId(77));
     CandidateSpec cs; cs.workerBootId = WorkerBootId(77);
-    CHECK_THROWS_CODE(sched.ingest_candidate(build_candidate(cs)), ErrorCode::StaleAuthority);
+    expect_fabric_error([&]{ sched.ingest_candidate(build_candidate(cs)); }, ErrorCode::StaleAuthority, "fenced worker");
     Scheduler s2(default_config());
     s2.fence_source(SourceBootId(88));
     CandidateSpec cs2; cs2.sourceBootId = SourceBootId(88);
-    CHECK_THROWS_CODE(s2.ingest_candidate(build_candidate(cs2)), ErrorCode::StaleAuthority);
+    expect_fabric_error([&]{ s2.ingest_candidate(build_candidate(cs2)); }, ErrorCode::StaleAuthority, "fenced source");
 }
 
 int main() { return testharness::run_all("test_lifecycle"); }

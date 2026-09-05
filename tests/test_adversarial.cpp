@@ -4,9 +4,9 @@ TESTCASE(nan_throughput_throws_nonfinite) {
     DemandSpec ds;
     ds.throughputObjective = std::numeric_limits<double>::quiet_NaN();
     SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
-    CHECK_THROWS_CODE(req.demand.validate(), ErrorCode::NonFinite);
+    expect_fabric_error([&]{ req.demand.validate(); }, ErrorCode::NonFinite, "nan throughput validate");
     Scheduler sched(default_config());
-    CHECK_THROWS_CODE((sched.schedule(req, nullptr, nullptr)), ErrorCode::NonFinite);
+    expect_fabric_error([&]{ (void)sched.schedule(req, nullptr, nullptr); }, ErrorCode::NonFinite, "nan schedule");
 }
 
 TESTCASE(minimum_exceeds_maximum_throws) {
@@ -15,7 +15,7 @@ TESTCASE(minimum_exceeds_maximum_throws) {
     ds.maxCount = CoreCount(2);
     ds.targetCount = CoreCount(1);
     SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
-    CHECK_THROWS_CODE(req.demand.validate(), ErrorCode::InvalidCountRange);
+    expect_fabric_error([&]{ req.demand.validate(); }, ErrorCode::InvalidCountRange, "min>max validate");
 }
 
 TESTCASE(ranker_scores_are_finite_nonnegative) {

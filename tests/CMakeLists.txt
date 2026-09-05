@@ -28,3 +28,8 @@ add_test(NAME test_concurrency COMMAND test_concurrency)
 add_executable(test_adversarial test_adversarial.cpp)
 target_link_libraries(test_adversarial PRIVATE FabricScheduler::FabricScheduler)
 add_test(NAME test_adversarial COMMAND test_adversarial)
+
+add_executable(multiprocess_proof_test multiprocess_proof_test.cpp)
+target_link_libraries(multiprocess_proof_test PRIVATE FabricScheduler::FabricScheduler)
+add_dependencies(multiprocess_proof_test coordinator_main worker_main)
+add_test(NAME multiprocess_proof_test COMMAND multiprocess_proof_test)

@@ -149,7 +149,7 @@ int main() {
     Scheduler sched(cfg);
 
     Candidate a = make_candidate(CandidateId(1), WorkerBootId(10), SourceBootId(20), MemoryDomainId(1), 1, 16_GiB, 16_GiB, 0.0, CongestionGeneration(1), true);
-    Candidate b = make_candidate(CandidateId(2), WorkerBootId(11), SourceBootId(21), MemoryDomainId(2), 3, 8_GiB, 8_GiB, 0.0, CongestionGeneration(1), false);
+    Candidate b = make_candidate(CandidateId(2), WorkerBootId(11), SourceBootId(21), MemoryDomainId(2), 3, 8_GiB, 8_GiB, 0.0, CongestionGeneration(1), true);
     sched.ingest_candidate(a);
     sched.ingest_candidate(b);
     assert(sched.candidate_count() == 2);
