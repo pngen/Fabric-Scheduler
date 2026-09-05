@@ -37,6 +37,7 @@ struct PlacementExplanation {
     std::string deterministicNote;
 };
 
+struct Persisted;
 class SchedulerState;
 
 // The Fabric Scheduler core facade.
@@ -75,6 +76,10 @@ public:
     void cancel(SchedulingRequestId requestId, std::string reason = {});
     void supersede(SchedulingRequestId oldRequest, SchedulingRequestId newRequest,
                   std::string reason = {});
+
+    // --- persistence -----------------------------------------------------
+    Persisted snapshot() const;
+    void restore(Persisted snapshot);
 
     PlacementExplanation explain(PlacementPlanId planId) const;
     PlacementLifecycleState plan_state(PlacementPlanId planId) const;

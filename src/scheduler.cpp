@@ -1,4 +1,5 @@
 #include "fabric_scheduler/scheduler.hpp"
+#include "fabric_scheduler/persistence.hpp"
 #include "fabric_scheduler/revalidation.hpp"
 #include "fabric_scheduler/adapters/dependency.hpp"
 #include "fabric_scheduler/adapters/resource_broker.hpp"
@@ -437,5 +438,62 @@ void Scheduler::fence_worker(WorkerBootId bootId) {
 void Scheduler::fence_source(SourceBootId bootId) {
     std::lock_guard<std::mutex> g(state_->mu);
     state_->fencedSources.insert(bootId);
+}
+
+
+Persisted Scheduler::snapshot() const {
+    std::lock_guard<std::mutex> g(state_->mu);
+    Persisted p;
+    p.epoch = state_->epoch;
+    p.authority = state_->authority;
+    p.nextPlanId = state_->nextPlanId;
+    p.nextSubmitOrdinal = state_->nextSubmitOrdinal;
+    p.nextEventOrdinal = state_->nextEventOrdinal;
+    p.ingestWatermark = state_->ingestWatermark;
+    for (const auto& [id, req] : state_->requests) p.requests.push_back(req);
+    for (const auto& [id, plan] : state_->plans) p.plans.push_back(plan);
+    for (const auto& [id, cand] : state_->candidates) {
+        CandidateIdentity ci;
+        ci.candidateId = cand.candidateId;
+        ci.candidateGeneration = cand.candidateGeneration;
+        ci.sourceId = cand.sourceId;
+        ci.sourceBootId = cand.sourceBootId;
+        ci.workerId = cand.workerId;
+        ci.workerBootId = cand.workerBootId;
+        p.candidateIdentities.push_back(ci);
+    }
+    p.supersessionHistory = state_->supersessionHistory;
+    p.cancelledRequests = state_->cancelledRequests;
+    return p;
+}
+
+void Scheduler::restore(Persisted p) {
+    std::lock_guard<std::mutex> g(state_->mu);
+    state_->requests.clear();
+    for (auto& req : p.requests) state_->requests.emplace(req.requestId, std::move(req));
+    state_->plans.clear();
+    state_->latestPlanByRequest.clear();
+    for (auto& plan : p.plans) {
+        const auto pid = plan.planId;
+        state_->plans.emplace(pid, plan);
+        auto& lp = state_->latestPlanByRequest;
+        const auto it = lp.find(plan.requestId);
+        if (it == lp.end() || it->second.value() < pid.value()) lp[plan.requestId] = pid;
+    }
+    state_->epoch = p.epoch;
+    state_->authority = p.authority;
+    state_->nextPlanId = p.nextPlanId;
+    state_->nextSubmitOrdinal = p.nextSubmitOrdinal;
+    state_->nextEventOrdinal = p.nextEventOrdinal;
+    state_->ingestWatermark = p.ingestWatermark;
+    state_->supersessionHistory = std::move(p.supersessionHistory);
+    state_->cancelledRequests = std::move(p.cancelledRequests);
+    state_->candidates.clear();      // dynamic evidence is never restored as current.
+    state_->fencedWorkers.clear();
+    state_->fencedSources.clear();
+    // Conservative recovery: any non-terminal plan must be revalidated.
+    for (auto& [id, plan] : state_->plans) {
+        if (!is_terminal(plan.state)) force_state(plan, PlacementLifecycleState::REVALIDATION_REQUIRED, state_->nextEventOrdinal++);
+    }
 }
 }  // namespace fabric

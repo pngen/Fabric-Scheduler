@@ -47,6 +47,7 @@ set(FABRIC_LIBRARY_SOURCES
   src/policy.cpp
   src/persistence.cpp
   src/protocol.cpp
+  src/net.cpp
   src/coordinator.cpp
   src/worker.cpp
   src/adapters/resource_broker.cpp
@@ -64,6 +65,9 @@ target_include_directories(FabricScheduler PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 target_compile_features(FabricScheduler PUBLIC cxx_std_20)
+if(WIN32)
+  target_link_libraries(FabricScheduler PRIVATE ws2_32)
+endif()
 
 set_target_properties(FabricScheduler PROPERTIES
   VERSION ${PROJECT_VERSION}
