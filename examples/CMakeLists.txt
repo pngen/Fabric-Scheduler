@@ -1,0 +1,3 @@
+add_executable(example_basic_single_device basic_single_device.cpp)
+target_link_libraries(example_basic_single_device PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME example_basic_single_device COMMAND example_basic_single_device)

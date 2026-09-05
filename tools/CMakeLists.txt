@@ -1,0 +1,2 @@
+add_executable(fabric_inspect fabric_inspect.cpp)
+target_link_libraries(fabric_inspect PRIVATE FabricScheduler::FabricScheduler)

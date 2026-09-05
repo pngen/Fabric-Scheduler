@@ -1,0 +1,2 @@
+add_executable(bench_candidate bench_candidate.cpp)
+target_link_libraries(bench_candidate PRIVATE FabricScheduler::FabricScheduler)

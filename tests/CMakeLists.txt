@@ -1,0 +1,6 @@
+add_executable(core_smoke_test core_smoke_test.cpp)
+target_link_libraries(core_smoke_test PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME core_smoke_test COMMAND core_smoke_test)
+add_executable(scheduler_pipeline_test scheduler_pipeline_test.cpp)
+target_link_libraries(scheduler_pipeline_test PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME scheduler_pipeline_test COMMAND scheduler_pipeline_test)

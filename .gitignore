@@ -1,0 +1,28 @@
+# Build output
+build/
+out/
+cmake-build-*/
+*.vcxproj.user
+*.sln.metagen
+*.ilk
+*.pdb
+*.tlog/
+
+# Persistence / proof temp artifacts
+*.fabric.bin
+*.fabric.bin.tmp
+test_state/
+proof_tmp/
+*.log
+*.dump
+
+# Editor / OS noise
+.vscode/
+.idea/
+.history/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Sanitizer debris
+*.asan
