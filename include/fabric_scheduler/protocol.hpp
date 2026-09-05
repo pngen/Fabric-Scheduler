@@ -40,7 +40,8 @@ enum class MessageType : std::uint8_t {
     EXECUTION_RESULT = 17,
     SAVE = 18,
     SHUTDOWN = 19,
-    ERROR = 20
+    ERROR = 20,
+    EXECUTE = 21
 };
 
 inline constexpr const char* to_string(MessageType m) noexcept {
@@ -66,6 +67,7 @@ inline constexpr const char* to_string(MessageType m) noexcept {
         case MessageType::SAVE: return "SAVE";
         case MessageType::SHUTDOWN: return "SHUTDOWN";
         case MessageType::ERROR: return "ERROR";
+        case MessageType::EXECUTE: return "EXECUTE";
     }
     return "UNKNOWN";
 }

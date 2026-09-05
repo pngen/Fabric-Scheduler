@@ -27,3 +27,21 @@ if(MSVC)
   target_compile_options(cuda_proof PRIVATE /W4)
 endif()
 add_test(NAME cuda_proof COMMAND cuda_proof)
+
+add_executable(cuda_worker src/cuda_worker_main.cpp "${CU_OBJ}")
+target_link_libraries(cuda_worker PRIVATE FabricScheduler::FabricScheduler CUDA::cudart)
+target_include_directories(cuda_worker PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+if(MSVC)
+  target_compile_options(cuda_worker PRIVATE /W4)
+endif()
+
+# Integrated real CUDA worker-death scheduling proof driver. Host-only (it spawns
+# the coordinator and CUDA worker OS processes), so it links the library but not
+# the CUDA runtime directly.
+add_executable(cuda_worker_death_proof src/cuda_worker_death_proof.cpp)
+target_link_libraries(cuda_worker_death_proof PRIVATE FabricScheduler::FabricScheduler)
+add_dependencies(cuda_worker_death_proof cuda_worker)
+if(MSVC)
+  target_compile_options(cuda_worker_death_proof PRIVATE /W4)
+endif()
+add_test(NAME cuda_worker_death_proof COMMAND cuda_worker_death_proof)

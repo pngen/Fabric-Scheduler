@@ -35,7 +35,7 @@ FrameHeader FrameCodec::parse_header(const std::byte* header12) {
     const std::uint8_t version = r.get_u8();
     if (version != kFrameVersion) throw FabricError(ErrorCode::UnsupportedVersion, "unsupported frame version");
     const std::uint8_t type = r.get_u8();
-    if (type > static_cast<std::uint8_t>(MessageType::ERROR)) throw FabricError(ErrorCode::MalformedFrame, "invalid message type");
+    if (type > static_cast<std::uint8_t>(MessageType::EXECUTE)) throw FabricError(ErrorCode::MalformedFrame, "invalid message type");
     FrameHeader h;
     h.type = static_cast<MessageType>(type);
     h.flags = r.get_u8();
