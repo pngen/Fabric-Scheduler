@@ -15,7 +15,9 @@
 #include "fabric_scheduler/placement.hpp"
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
+#undef ERROR
 
 #include <cstdint>
 #include <fstream>
@@ -36,6 +38,7 @@ namespace {
 struct Child {
     HANDLE hProcess{nullptr};
     HANDLE hThread{nullptr};
+    DWORD pid{0};
     bool killed{false};
     std::wstring outPath;
     std::wstring errPath;
@@ -122,15 +125,21 @@ bool spawn(const std::wstring& exe, const std::wstring& args,
     if (!ok) return false;
     out.hProcess = pi.hProcess;
     out.hThread = pi.hThread;
+    out.pid = GetProcessId(pi.hProcess);
     out.outPath = outPath;
     out.errPath = errPath;
     return true;
 }
 
+void remove_logs(const Child& c) {
+    if (!c.outPath.empty()) DeleteFileW(c.outPath.c_str());
+    if (!c.errPath.empty()) DeleteFileW(c.errPath.c_str());
+}
+
 void dump_file(const std::wstring& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return;
-    std::cerr << "---- " << path << " ----\n";
+    std::wcerr << L"---- " << path << L" ----\n";
     std::cerr << in.rdbuf();
     std::cerr << "\n";
 }
@@ -286,12 +295,14 @@ int main() {
 
     try {
         const std::uint16_t port = find_free_port();
+        std::cout << "controller port = " << port << "\n";
         stateFile = temp + L"fabric_mp_state_" + std::to_wstring(port) + L".bin";
 
         const std::wstring coordArgs =
             L"--port " + std::to_wstring(port) + L" --state-file \"" + stateFile + L"\"";
         if (!spawn(coordExe, coordArgs, temp, L"coordinator", coordinator))
             throw std::runtime_error("failed to spawn coordinator");
+        std::cout << "spawned coordinator pid=" << coordinator.pid << "\n";
 
         // Wait (bounded startup) for the coordinator to be connectable.
         std::optional<TcpChannel> controller;
@@ -306,11 +317,13 @@ int main() {
                                   L" --name A --boot 100 --mode A",
                    temp, L"workerA", workerA))
             throw std::runtime_error("failed to spawn worker A");
+        std::cout << "spawned worker A pid=" << workerA.pid << "\n";
 
         if (!spawn(workerExe, L"--port " + std::to_wstring(port) +
                                   L" --name B --boot 200 --mode B",
                    temp, L"workerB", workerB))
             throw std::runtime_error("failed to spawn worker B");
+        std::cout << "spawned worker B pid=" << workerB.pid << "\n";
 
         if (!wait_for_candidates(ctrl, 2))
             throw std::runtime_error("candidates were not published");
@@ -363,6 +376,9 @@ int main() {
         workerA.kill();
         workerB.kill();
         DeleteFileW(stateFile.c_str());
+        remove_logs(coordinator);
+        remove_logs(workerA);
+        remove_logs(workerB);
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "multiprocess proof FAIL: " << e.what() << "\n";
@@ -376,6 +392,9 @@ int main() {
         workerA.kill();
         workerB.kill();
         DeleteFileW(stateFile.c_str());
+        remove_logs(coordinator);
+        remove_logs(workerA);
+        remove_logs(workerB);
         return 1;
     }
 }
