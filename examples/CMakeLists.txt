@@ -1,3 +1,6 @@
 add_executable(example_basic_single_device basic_single_device.cpp)
 target_link_libraries(example_basic_single_device PRIVATE FabricScheduler::FabricScheduler)
 add_test(NAME example_basic_single_device COMMAND example_basic_single_device)
+add_executable(example_host_evidence example_host_evidence.cpp)
+target_link_libraries(example_host_evidence PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME example_host_evidence COMMAND example_host_evidence)
