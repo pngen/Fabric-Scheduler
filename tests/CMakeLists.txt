@@ -4,3 +4,27 @@ add_test(NAME core_smoke_test COMMAND core_smoke_test)
 add_executable(scheduler_pipeline_test scheduler_pipeline_test.cpp)
 target_link_libraries(scheduler_pipeline_test PRIVATE FabricScheduler::FabricScheduler)
 add_test(NAME scheduler_pipeline_test COMMAND scheduler_pipeline_test)
+
+add_executable(test_eligibility test_eligibility.cpp)
+target_link_libraries(test_eligibility PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_eligibility COMMAND test_eligibility)
+
+add_executable(test_ranking_determinism test_ranking_determinism.cpp)
+target_link_libraries(test_ranking_determinism PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_ranking_determinism COMMAND test_ranking_determinism)
+
+add_executable(test_lifecycle test_lifecycle.cpp)
+target_link_libraries(test_lifecycle PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_lifecycle COMMAND test_lifecycle)
+
+add_executable(test_supersede_cancel test_supersede_cancel.cpp)
+target_link_libraries(test_supersede_cancel PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_supersede_cancel COMMAND test_supersede_cancel)
+
+add_executable(test_concurrency test_concurrency.cpp)
+target_link_libraries(test_concurrency PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_concurrency COMMAND test_concurrency)
+
+add_executable(test_adversarial test_adversarial.cpp)
+target_link_libraries(test_adversarial PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME test_adversarial COMMAND test_adversarial)

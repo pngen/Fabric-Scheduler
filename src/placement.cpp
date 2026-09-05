@@ -17,6 +17,10 @@ bool is_terminal_state(PlacementLifecycleState s) {
 // pipeline; terminal absorbs and revalidation is reachable from every
 // non-terminal state. Anything not listed is illegal.
 bool step(PlacementLifecycleState from, PlacementLifecycleState to) {
+    // A state may always keep itself (idempotent no-op). placement_advance and
+    // the scheduler both short-circuit identical-state transitions, so this only
+    // affects the public placement_can_transition predicate's self-transition.
+    if (from == to) return true;
     switch (from) {
         case PlacementLifecycleState::REQUESTED:
             return to == PlacementLifecycleState::DISCOVERING ||

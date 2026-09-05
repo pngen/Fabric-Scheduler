@@ -25,4 +25,4 @@ proof_tmp/
 Thumbs.db
 
 # Sanitizer debris
-*.asan
+*.asanbuild-cuda/

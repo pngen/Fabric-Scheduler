@@ -76,13 +76,7 @@ set_target_properties(FabricScheduler PROPERTIES
 )
 
 if(FABRIC_BUILD_CUDA)
-  include(CheckLanguage)
-  check_language(CUDA)
-  if(CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-    list(APPEND FABRIC_LIBRARY_SOURCES cuda/src/cuda_worker.cu)
-    enable_language(CUDA)
-  endif()
+  add_subdirectory(cuda)
 endif()
 
 include(CTest)
