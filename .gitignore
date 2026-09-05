@@ -1,5 +1,8 @@
 # Build output
 build/
+build-cuda/
+build-asan/
+build-consumer/
 out/
 cmake-build-*/
 *.vcxproj.user
@@ -25,4 +28,5 @@ proof_tmp/
 Thumbs.db
 
 # Sanitizer debris
-*.asanbuild-cuda/
+*.asan
+clang_rt*
