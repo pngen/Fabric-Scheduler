@@ -287,8 +287,12 @@ int main() {
     std::wstring selfDir(self);
     const std::size_t slash = selfDir.find_last_of(L"\\/");
     if (slash != std::wstring::npos) selfDir = selfDir.substr(0, slash);
-    const std::wstring coordExe = selfDir + L"\\..\\..\\tools\\Release\\coordinator_main.exe";
-    const std::wstring workerExe = selfDir + L"\\..\\..\\tools\\Release\\worker_main.exe";
+    // Use the same configuration directory as this test exe (Release/Debug), so a
+    // Debug build of the proof resolves the Debug coordinator/worker binaries.
+    const std::size_t cfgSlash = selfDir.find_last_of(L"\\/");
+    std::wstring cfg = (cfgSlash != std::wstring::npos) ? selfDir.substr(cfgSlash + 1) : L"Release";
+    const std::wstring coordExe = selfDir + L"\\..\\..\\tools\\" + cfg + L"\\coordinator_main.exe";
+    const std::wstring workerExe = selfDir + L"\\..\\..\\tools\\" + cfg + L"\\worker_main.exe";
 
     Child coordinator, workerA, workerB;
     std::wstring stateFile;
