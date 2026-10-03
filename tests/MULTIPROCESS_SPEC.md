@@ -1,6 +1,6 @@
 # Fabric Scheduler multiprocess proof specification
 
-Repository: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler (C++20, MSVC /W4 /WX).
+Repository: Fabric-Scheduler (C++20, MSVC /W4 /WX).
 
 ## Goal
 Build a REAL distributed reference deployment using independent OS processes over framed loopback TCP, and prove: registration, candidate publication, deterministic scheduling (A wins), commit, execution handoff, worker death -> fencing -> old plan revalidation -> B wins, stale replay rejection, coordinator restart/recovery.
@@ -14,8 +14,8 @@ Build a REAL distributed reference deployment using independent OS processes ove
 - Units: ByteCount literals 1_MiB/1_GiB. StrongId types: CandidateId(1), WorkerId(1), WorkerBootId(1), SourceId(1), SourceBootId(1), PolicyGeneration(1), TopologyGeneration(1), etc. All StrongIds wrap a u64 and construct as <Type>(n).
 
 ## Build environment
-- Build dir: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build (VS). Lib target: FabricScheduler (link ws2_32 automatically).
-- Build a target: cmake --build "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build" --config Release --target <T>
+- Build dir: build (VS). Lib target: FabricScheduler (link ws2_32 automatically).
+- Build a target: cmake --build build --config Release --target <T>
 - Reconfigure after CMakeLists edits: cmake -S "<repo>" -B "<repo>\build" -G "Visual Studio 17 2022" -A x64 -DFABRIC_BUILD_CUDA=OFF
 - Add executables to tools/CMakeLists.txt (coordinator_main, worker_main) and tests/CMakeLists.txt (multiprocess_proof_test). Link FabricScheduler::FabricScheduler. Register multiprocess_proof_test via add_test.
 - The library /W4 /WX (zero warnings). Cast unused params to (void).

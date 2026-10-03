@@ -1,13 +1,13 @@
 # Fabric Scheduler core test-suite specification
 
-Repository: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler (C++20, MSVC, /W4 /WX).
+Repository: Fabric-Scheduler (C++20, MSVC, /W4 /WX).
 
 ## Environment / build
-- Configured VS build dir: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build
-- Build target: cmake --build "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build" --config Release --target <Target>
-- Run: "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build\tests\Release\<Target>.exe"
+- Configured VS build dir: build
+- Build target: cmake --build build --config Release --target <Target>
+- Run: build\tests\Release\<Target>.exe
 - After editing tests/CMakeLists.txt reconfigure:
-  cmake -S "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler" -B "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build" -G "Visual Studio 17 2022" -A x64 -DFABRIC_BUILD_CUDA=OFF
+  cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DFABRIC_BUILD_CUDA=OFF
 - Add each test to tests/CMakeLists.txt as:
   add_executable(<name> <file>)
   target_link_libraries(<name> PRIVATE FabricScheduler::FabricScheduler)

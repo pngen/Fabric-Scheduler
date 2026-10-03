@@ -1,6 +1,6 @@
 # Fabric Scheduler benchmark results
 
-Repo: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler
+Repo: Fabric-Scheduler
 Build: cmake --build build --config Release --target bench_candidate  (MSVC Visual Studio 17 2022, x64, /W4 /WX, zero warnings)
 Bin:   build\benchmarks\Release\bench_candidate.exe
 

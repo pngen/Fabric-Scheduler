@@ -1,11 +1,11 @@
 # Fabric Scheduler benchmark specification
 
-Repository: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler.
+Repository: Fabric-Scheduler.
 
 ## Environment
-- Configured build dir: E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build
-- Build: cmake --build "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build" --config Release --target bench_candidate
-- Run: "E:\The Journey\Coding\GitHub\production\Fabric-Scheduler\build\benchmarks\Release\bench_candidate.exe" [scale]
+- Configured build dir: build
+- Build: cmake --build build --config Release --target bench_candidate
+- Run: build\benchmarks\Release\bench_candidate.exe [scale]
 - Add new benchmark executables to benchmarks/CMakeLists.txt linking FabricScheduler::FabricScheduler. Ensure they compile with /W4 /WX (zero warnings).
 
 ## Goals

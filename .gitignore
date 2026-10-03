@@ -10,6 +10,14 @@ cmake-build-*/
 *.ilk
 *.pdb
 *.tlog/
+*.obj
+*.o
+*.exe
+*.lib
+*.dll
+*.so
+*.dylib
+*.a
 
 # Persistence / proof temp artifacts
 *.fabric.bin
