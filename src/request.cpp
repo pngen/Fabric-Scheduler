@@ -44,8 +44,9 @@ void DemandProfile::validate() const {
     }
 
     // aggregate VRAM must cover the minimum device count at per-device VRAM
-    if (min > 0 && accelerator.aggregateVram.value() > 0 &&
-        accelerator.aggregateVram.value() < accelerator.vramPerDevice.value() * min) {
+    // (compared by division: the product can exceed 64 bits at the ceilings)
+    if (min > 0 && accelerator.aggregateVram.value() > 0 && accelerator.vramPerDevice.value() > 0 &&
+        accelerator.aggregateVram.value() / accelerator.vramPerDevice.value() < min) {
         throw FabricError(ErrorCode::InvalidDemand,
                           "aggregate VRAM is below per-device VRAM times minimum count");
     }

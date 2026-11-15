@@ -153,6 +153,74 @@ TESTCASE(reject_policy) {
     CHECK(!r.eligible());
 }
 
+// ---- regression: stated hard requirements are enforced ----------------------
+
+TESTCASE(reject_capacity_accelerator_count) {
+    DemandSpec ds; ds.minCount = CoreCount(2); ds.targetCount = CoreCount(2); ds.maxCount = CoreCount(2);
+    // One matching device, with enough aggregate VRAM for two.
+    auto r = eval_status(ds, CandidateSpec{});
+    CHECK(r.status == EligibilityStatus::REJECT_CAPACITY);
+    CHECK(!r.eligible());
+    SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
+    Candidate two = build_candidate(CandidateSpec{});
+    two.bindings.push_back(two.bindings.front());
+    CHECK(HardFilter().evaluate(req, two, nullptr, nullptr).eligible());
+}
+
+TESTCASE(reject_required_model_residency) {
+    SchedulingRequest req = build_request(DemandSpec{}, SchedulingRequestId(1));
+    req.demand.residency.requireModelResident = true;
+    Candidate c = build_candidate(CandidateSpec{});
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).eligible());
+    c.residency.modelResident = false;
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).status == EligibilityStatus::REJECT_STORAGE);
+}
+
+TESTCASE(reject_required_adapter_residency) {
+    SchedulingRequest req = build_request(DemandSpec{}, SchedulingRequestId(1));
+    req.demand.residency.requireAdapterResident = true;
+    Candidate c = build_candidate(CandidateSpec{});          // adapter not resident
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).status == EligibilityStatus::REJECT_STORAGE);
+    c.residency.adapterResident = true;
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).eligible());
+}
+
+TESTCASE(reject_required_state_locality) {
+    DemandSpec ds; ds.storageRequireLocal = false;
+    SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
+    req.demand.residency.requireStateLocal = true;
+    CandidateSpec cs; cs.stateLocal = false;
+    CHECK(HardFilter().evaluate(req, build_candidate(cs), nullptr, nullptr).status == EligibilityStatus::REJECT_STORAGE);
+    CHECK(HardFilter().evaluate(req, build_candidate(CandidateSpec{}), nullptr, nullptr).eligible());
+}
+
+TESTCASE(reject_movement_above_maximum) {
+    DemandSpec ds; ds.storageRequireLocal = false;
+    SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
+    CandidateSpec cs; cs.stateLocal = false; cs.moveBytes = 512_MiB;
+    req.demand.maximumMovementCost = 256_MiB;
+    CHECK(HardFilter().evaluate(req, build_candidate(cs), nullptr, nullptr).status == EligibilityStatus::REJECT_STORAGE);
+    req.demand.maximumMovementCost = 1_GiB;
+    CHECK(HardFilter().evaluate(req, build_candidate(cs), nullptr, nullptr).eligible());
+}
+
+TESTCASE(reject_infeasible_communication_path) {
+    SchedulingRequest req = build_request(DemandSpec{}, SchedulingRequestId(1));
+    Candidate c = build_candidate(CandidateSpec{});
+    c.communication.pathFeasible = false;
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).eligible());    // the workload does not communicate
+    req.demand.communication = CommunicationPattern::AllReduce;
+    CHECK(HardFilter().evaluate(req, c, nullptr, nullptr).status == EligibilityStatus::REJECT_NETWORK);
+}
+
+TESTCASE(reject_shared_root_failure_domain) {
+    SchedulingRequest req = build_request(DemandSpec{}, SchedulingRequestId(1));
+    req.demand.failureDomains.avoidSingleRoot = true;
+    CandidateSpec cs; cs.sharesPcieRoot = true;
+    CHECK(HardFilter().evaluate(req, build_candidate(cs), nullptr, nullptr).status == EligibilityStatus::REJECT_FAILURE_DOMAIN);
+    CHECK(HardFilter().evaluate(req, build_candidate(CandidateSpec{}), nullptr, nullptr).eligible());
+}
+
 TESTCASE(hard_rejected_candidate_never_wins) {
     Scheduler sched(default_config());
     CandidateSpec bad; bad.candidateId = CandidateId(1); bad.vramAvailable = 2_GiB;

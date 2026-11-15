@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -117,6 +118,7 @@ struct Ctx {
     LiveState* live;
     std::atomic<bool>* running;
     std::string stateFile;
+    std::mutex saveMu;
     std::mutex workerMu;
     std::unordered_map<std::string, WorkerBootId> workers;
 };
@@ -272,14 +274,28 @@ void serve_connection(Ctx& ctx, TcpChannel ch) {
                     break;
                 }
                 case MessageType::SAVE: {
-                    std::ofstream ofs(ctx.stateFile, std::ios::binary);
-                    if (!ofs) {
-                        send_error(ch, ErrorCode::Internal, "cannot open state file");
-                        break;
+                    // Written to a temporary file and renamed over the state
+                    // file, so a crash during a save never leaves a state file
+                    // the next incarnation cannot recover.
+                    std::lock_guard<std::mutex> saveLock(ctx.saveMu);
+                    const std::string tmp = ctx.stateFile + ".tmp";
+                    {
+                        std::ofstream ofs(tmp, std::ios::binary | std::ios::trunc);
+                        if (!ofs) {
+                            send_error(ch, ErrorCode::Internal, "cannot open state file");
+                            break;
+                        }
+                        persist_save(ctx.sched->snapshot(), ofs);
+                        ofs.flush();
+                        if (!ofs) {
+                            send_error(ch, ErrorCode::Internal, "state write failed");
+                            break;
+                        }
                     }
-                    persist_save(ctx.sched->snapshot(), ofs);
-                    if (!ofs) {
-                        send_error(ch, ErrorCode::Internal, "state write failed");
+                    std::error_code ec;
+                    std::filesystem::rename(tmp, ctx.stateFile, ec);
+                    if (ec) {
+                        send_error(ch, ErrorCode::Internal, "state file replace failed");
                         break;
                     }
                     ByteWriter w;
@@ -341,6 +357,26 @@ int main(int argc, char** argv) {
     cfg.policy.generation = PolicyGeneration(1);
     cfg.maxCandidatesPerRequest = CoreCount(64);
     Scheduler scheduler(cfg);
+
+    // Recover the durable state a previous incarnation saved, under a fresh
+    // coordinator epoch. Without this a restarted coordinator would start again
+    // at epoch 1 and reissue plan ids. A state file that cannot be validated
+    // stops the start: it is never silently replaced by empty state.
+    {
+        std::ifstream ifs(stateFile, std::ios::binary);
+        if (ifs) {
+            try {
+                Persisted recovered = persist_load(ifs);
+                const CoordinatorEpoch prior = recovered.epoch;
+                scheduler.restore(std::move(recovered));
+                scheduler.set_epoch(CoordinatorEpoch(prior.value() + 1));
+                std::cout << "RECOVERED epoch " << scheduler.epoch().value() << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "coordinator: state file rejected: " << e.what() << std::endl;
+                return 1;
+            }
+        }
+    }
 
     InMemoryBroker broker;
     CurrentAuthorityExec exec(scheduler);

@@ -59,13 +59,19 @@ EligibilityResult HardFilter::evaluate(const SchedulingRequest& request,
 
     // --- capability --------------------------------------------------------
     if (accel.minimumCount.value() > 0) {
-        bool found = false;
+        std::uint64_t matching = 0;
         for (const auto& b : candidate.bindings) {
-            if (b.capability == accel.capability && b.capabilityCurrent) { found = true; break; }
+            if (b.capability == accel.capability && b.capabilityCurrent) ++matching;
         }
-        if (!found) {
+        if (matching == 0) {
             return reject(EligibilityStatus::REJECT_CAPABILITY,
                           "candidate does not expose a current required accelerator capability",
+                          RankFactorKind::AcceleratorFit, ResourceKind::Accelerator);
+        }
+        // The minimum device count is a hard requirement, not a preference.
+        if (matching < accel.minimumCount.value()) {
+            return reject(EligibilityStatus::REJECT_CAPACITY,
+                          "candidate exposes fewer required accelerators than the minimum count",
                           RankFactorKind::AcceleratorFit, ResourceKind::Accelerator);
         }
     }
@@ -134,6 +140,13 @@ EligibilityResult HardFilter::evaluate(const SchedulingRequest& request,
         }
     }
 
+    // --- communication path ------------------------------------------------
+    if (demand.communication != CommunicationPattern::None && !candidate.communication.pathFeasible) {
+        return reject(EligibilityStatus::REJECT_NETWORK,
+                      "candidate has no feasible communication path for the required pattern",
+                      RankFactorKind::CommunicationCost, ResourceKind::LinkBandwidth);
+    }
+
     // --- storage -----------------------------------------------------------
     if (candidate.capacity.storageAvailable.value() < demand.storage.capacity.value()) {
         return reject(EligibilityStatus::REJECT_STORAGE,
@@ -144,6 +157,40 @@ EligibilityResult HardFilter::evaluate(const SchedulingRequest& request,
         return reject(EligibilityStatus::REJECT_STORAGE,
                       "candidate does not provide local storage for required state",
                       RankFactorKind::StorageLocality, ResourceKind::Storage);
+    }
+
+    // --- residency ---------------------------------------------------------
+    if (demand.residency.requireModelResident && !candidate.residency.modelResident) {
+        return reject(EligibilityStatus::REJECT_STORAGE,
+                      "required model is not resident on the candidate",
+                      RankFactorKind::ModelResidency, ResourceKind::ModelResidency);
+    }
+    if (demand.residency.requireAdapterResident && !candidate.residency.adapterResident) {
+        return reject(EligibilityStatus::REJECT_STORAGE,
+                      "required adapter is not resident on the candidate",
+                      RankFactorKind::AdapterResidency, ResourceKind::ModelResidency);
+    }
+    if (demand.residency.requireStateLocal && !candidate.residency.stateLocal) {
+        return reject(EligibilityStatus::REJECT_STORAGE,
+                      "required state is not local to the candidate",
+                      RankFactorKind::ReusableStateLocality, ResourceKind::Storage);
+    }
+    if (demand.maximumMovementCost.value() > 0 &&
+        candidate.residency.moveBytes.value() > demand.maximumMovementCost.value()) {
+        return reject(EligibilityStatus::REJECT_STORAGE,
+                      "state movement for the candidate exceeds the maximum movement cost",
+                      RankFactorKind::CheckpointMovementCost, ResourceKind::Storage);
+    }
+
+    // --- failure domain ----------------------------------------------------
+    if (demand.failureDomains.avoidSingleRoot) {
+        bool sharedRoot = candidate.locality.sharesPcieRoot;
+        for (const auto& b : candidate.bindings) sharedRoot = sharedRoot || b.sharesPcieRoot;
+        if (sharedRoot) {
+            return reject(EligibilityStatus::REJECT_FAILURE_DOMAIN,
+                          "candidate devices share a constrained root",
+                          RankFactorKind::FailureDomainDiversification, ResourceKind::Accelerator);
+        }
     }
 
     // --- reservation -------------------------------------------------------

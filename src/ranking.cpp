@@ -258,6 +258,9 @@ RankedCandidate Ranker::evaluate(const SchedulingRequest& request,
         std::string desc;
         const double weight = options.weights.get(kind);
         Cost value = compute_factor(kind, request, candidate, prov, desc);
+        // UNKNOWN evidence is never a known favorable value: the factor ranks
+        // as its worst case.
+        if (prov == Provenance::Unknown) value = Cost(1.0);
         RankFactor f;
         f.kind = kind;
         f.value = value;

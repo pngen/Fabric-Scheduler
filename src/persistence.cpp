@@ -384,8 +384,11 @@ void persist_save(const Persisted& state, std::ostream& out) {
     for (const auto& c : state.candidateIdentities) enc_candidate_id(pw, c);
     pw.put_u32(static_cast<std::uint32_t>(state.supersessionHistory.size()));
     for (const auto& s : state.supersessionHistory) pw.put_string(s);
-    pw.put_u32(static_cast<std::uint32_t>(state.cancelledRequests.size()));
-    for (const auto id : state.cancelledRequests) pw.put_id(id);
+    // Written in id order: equal state always encodes to the same bytes.
+    std::vector<SchedulingRequestId> cancelled(state.cancelledRequests.begin(), state.cancelledRequests.end());
+    std::sort(cancelled.begin(), cancelled.end());
+    pw.put_u32(static_cast<std::uint32_t>(cancelled.size()));
+    for (const auto id : cancelled) pw.put_id(id);
 
     const auto payload = pw.take();
     const std::uint64_t sum = fnv1a64_digest(payload.data(), payload.size());

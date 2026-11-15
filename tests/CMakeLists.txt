@@ -5,6 +5,10 @@ add_executable(scheduler_pipeline_test scheduler_pipeline_test.cpp)
 target_link_libraries(scheduler_pipeline_test PRIVATE FabricScheduler::FabricScheduler)
 add_test(NAME scheduler_pipeline_test COMMAND scheduler_pipeline_test)
 
+add_executable(persistence_test persistence_test.cpp)
+target_link_libraries(persistence_test PRIVATE FabricScheduler::FabricScheduler)
+add_test(NAME persistence_test COMMAND persistence_test)
+
 add_executable(test_eligibility test_eligibility.cpp)
 target_link_libraries(test_eligibility PRIVATE FabricScheduler::FabricScheduler)
 add_test(NAME test_eligibility COMMAND test_eligibility)

@@ -4,7 +4,6 @@
 #include "fabric_scheduler/adapters/execution.hpp"
 #include "fabric_scheduler/adapters/dependency.hpp"
 #include "fabric_scheduler/core/error.hpp"
-#include <cassert>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -12,6 +11,16 @@
 #include <cstddef>
 
 using namespace fabric;
+
+// Checks that stay active in every configuration: assert() is compiled out
+// under NDEBUG, which left this test without any check in a Release build.
+#define REQUIRE(cond)                                                          \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            std::cerr << "REQUIRE failed at line " << __LINE__ << ": " #cond "\n"; \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
 
 namespace {
 class OkBroker final : public ResourceBroker {
@@ -94,28 +103,28 @@ int main() {
     AllowAllPolicy pol;
     SchedulingRequest req = make_request();
     PlacementDecision d = sched.schedule(req, &dep, &pol);
-    assert(d.producedPlan);
+    REQUIRE(d.producedPlan);
     OkBroker broker;
     ResourceCommitResult cr = sched.commit(d.plan.planId, broker);
-    assert(cr.succeeded);
+    REQUIRE(cr.succeeded);
 
     // round-trip
     Persisted snap = sched.snapshot();
     std::ostringstream out(std::ios::binary);
     persist_save(snap, out);
     std::string bytes = out.str();
-    assert(!bytes.empty());
+    REQUIRE(!bytes.empty());
 
     std::istringstream in(bytes, std::ios::binary);
     Persisted loaded = persist_load(in);
-    assert(loaded.epoch == snap.epoch);
-    assert(loaded.authority == snap.authority);
-    assert(loaded.nextPlanId == snap.nextPlanId);
-    assert(loaded.requests.size() == snap.requests.size());
-    assert(loaded.plans.size() == snap.plans.size());
-    assert(loaded.candidateIdentities.size() == snap.candidateIdentities.size());
-    assert(loaded.plans[0].planId == snap.plans[0].planId);
-    assert(loaded.plans[0].selectedCandidate == snap.plans[0].selectedCandidate);
+    REQUIRE(loaded.epoch == snap.epoch);
+    REQUIRE(loaded.authority == snap.authority);
+    REQUIRE(loaded.nextPlanId == snap.nextPlanId);
+    REQUIRE(loaded.requests.size() == snap.requests.size());
+    REQUIRE(loaded.plans.size() == snap.plans.size());
+    REQUIRE(loaded.candidateIdentities.size() == snap.candidateIdentities.size());
+    REQUIRE(loaded.plans[0].planId == snap.plans[0].planId);
+    REQUIRE(loaded.plans[0].selectedCandidate == snap.plans[0].selectedCandidate);
 
     // --- corruption rejection ------------------------------------------
     std::vector<std::byte> buf(bytes.size());
@@ -126,28 +135,28 @@ int main() {
         auto bad = buf; bad[0] = std::byte(static_cast<std::uint8_t>(0x99));
         std::istringstream is(std::string(reinterpret_cast<const char*>(bad.data()), bad.size()), std::ios::binary);
         bool threw = false; try { (void)persist_load(is); } catch (const fabric::FabricError& e) { threw = (e.code() == ErrorCode::Corruption); }
-        assert(threw);
+        REQUIRE(threw);
     }
     // unsupported version: offset 4..7
     {
         auto bad = buf; bad[4] = std::byte(0xFF);
         std::istringstream is(std::string(reinterpret_cast<const char*>(bad.data()), bad.size()), std::ios::binary);
         bool threw = false; try { (void)persist_load(is); } catch (const fabric::FabricError& e) { threw = (e.code() == ErrorCode::UnsupportedVersion); }
-        assert(threw);
+        REQUIRE(threw);
     }
     // checksum mismatch: flip a payload byte (offset >= 17)
     {
         auto bad = buf; bad[17] = static_cast<std::byte>(static_cast<std::uint8_t>(std::to_integer<uint8_t>(bad[17]) ^ 0x40));
         std::istringstream is(std::string(reinterpret_cast<const char*>(bad.data()), bad.size()), std::ios::binary);
         bool threw = false; try { (void)persist_load(is); } catch (const fabric::FabricError& e) { threw = (e.code() == ErrorCode::ChecksumMismatch); }
-        assert(threw);
+        REQUIRE(threw);
     }
     // truncation
     {
         auto bad = std::vector<std::byte>(buf.begin(), buf.begin() + (buf.size() / 2));
         std::istringstream is(std::string(reinterpret_cast<const char*>(bad.data()), bad.size()), std::ios::binary);
         bool threw = false; try { (void)persist_load(is); } catch (const fabric::FabricError& e) { threw = (e.code() == ErrorCode::Truncation); }
-        assert(threw);
+        REQUIRE(threw);
     }
 
     std::cout << "persistence test PASS\n";

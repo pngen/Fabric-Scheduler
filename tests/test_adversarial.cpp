@@ -57,4 +57,27 @@ TESTCASE(insufficient_vram_candidate_never_wins) {
     CHECK(foundRejection);
 }
 
+// ---- regression: non-finite candidate evidence is rejected at ingest --------
+TESTCASE(non_finite_candidate_evidence_is_rejected) {
+    Scheduler sched(default_config());
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    { CandidateSpec cs; cs.congestion = nan;
+      expect_fabric_error([&]{ sched.ingest_candidate(build_candidate(cs)); }, ErrorCode::NonFinite, "nan congestion"); }
+    { CandidateSpec cs; cs.healthScore = std::numeric_limits<double>::infinity();
+      expect_fabric_error([&]{ sched.ingest_candidate(build_candidate(cs)); }, ErrorCode::NonFinite, "infinite health score"); }
+    { CandidateSpec cs; cs.communicationCost = Cost(nan);
+      expect_fabric_error([&]{ sched.ingest_candidate(build_candidate(cs)); }, ErrorCode::NonFinite, "nan communication cost"); }
+    CHECK(sched.candidate_count() == 0);
+}
+
+// ---- regression: the aggregate-VRAM check does not wrap at the ceilings -----
+TESTCASE(aggregate_vram_check_does_not_overflow) {
+    DemandSpec ds;
+    ds.minCount = CoreCount(1u << 20); ds.targetCount = CoreCount(1u << 20); ds.maxCount = CoreCount(1u << 20);
+    ds.vramPerDevice = ByteCount(16ull << 40);     // per-device x count = 2^64
+    ds.aggregateVram = 1_GiB;
+    SchedulingRequest req = build_request(ds, SchedulingRequestId(1));
+    expect_fabric_error([&]{ req.demand.validate(); }, ErrorCode::InvalidDemand, "aggregate below per-device times count");
+}
+
 int main() { return testharness::run_all("test_adversarial"); }

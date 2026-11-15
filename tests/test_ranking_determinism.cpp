@@ -65,4 +65,21 @@ TESTCASE(differing_evidence_ranks_by_score) {
     CHECK(r1.score.value() < r2.score.value());
 }
 
+// ---- regression: UNKNOWN evidence never ranks as a favorable value ----------
+TESTCASE(unknown_evidence_is_not_ranked_as_favorable) {
+    Scheduler sched(default_config());
+    CandidateSpec measured; measured.candidateId = CandidateId(1);
+    measured.congestion = 0.3; measured.residualBandwidth = 0.7;
+    CandidateSpec unknown; unknown.candidateId = CandidateId(2);
+    unknown.congestionProvenance = Provenance::Unknown;     // no congestion evidence at all
+    sched.ingest_candidate(build_candidate(measured));
+    sched.ingest_candidate(build_candidate(unknown));
+    AlwaysReadyDependency dep;
+    AllowAllPolicy pol;
+    auto d = sched.schedule(build_request(DemandSpec{}, SchedulingRequestId(1)), &dep, &pol);
+    CHECK(d.producedPlan);
+    CHECK(d.plan.selectedCandidate == CandidateId(1));
+    CHECK(d.eligible.size() == 2);
+}
+
 int main() { return testharness::run_all("test_ranking_determinism"); }

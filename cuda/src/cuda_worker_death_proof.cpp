@@ -73,7 +73,22 @@ bool file_contains(const std::wstring& path, const std::string& needle) {
 }
 
 void kill(const Child& c) { if (c.hProcess) { TerminateProcess(c.hProcess, 0); WaitForSingleObject(c.hProcess, 5000); } }
-void cleanup(const Child& c) { kill(c); if (c.hThread) CloseHandle(c.hThread); if (c.hProcess) CloseHandle(c.hProcess); DeleteFileW(c.outPath.c_str()); DeleteFileW(c.errPath.c_str()); }
+void cleanup(Child& c) {
+    kill(c);
+    if (c.hThread) CloseHandle(c.hThread);
+    if (c.hProcess) CloseHandle(c.hProcess);
+    c.hThread = nullptr; c.hProcess = nullptr;
+    DeleteFileW(c.outPath.c_str()); DeleteFileW(c.errPath.c_str());
+}
+
+// Stops every spawned process when the proof leaves main on any path. The
+// children inherit the proof's output pipe, so one left running after a failed
+// step keeps that pipe open and turns the failure into a hang for whoever reads
+// it (ctest).
+struct ChildGuard {
+    std::vector<Child*> children;
+    ~ChildGuard() { for (Child* c : children) kill(*c); }
+};
 
 bool wait_for(const std::wstring& path, const std::string& needle, int maxMs) {
     const auto t0 = Clock::now();
@@ -167,6 +182,9 @@ int main() {
     const std::wstring workerExe = worker_path();
     if (coordExe.empty() || workerExe.empty()) { std::printf("FAILED: exe path not found\n"); return 2; }
 
+    Child coordChild, workerA, workerB, workerA2;
+    ChildGuard guard{{&coordChild, &workerA, &workerB, &workerA2}};
+
     struct CtrlState {
         TcpListener ctrl;
         std::mutex mu;
@@ -194,7 +212,6 @@ int main() {
     ctrlThread.detach();
 
     std::printf("tempdir=%ls coordExe=%ls\n", tempdir.c_str(), coordExe.c_str());
-    Child coordChild;
     if (!spawn(coordExe, L"--port 0 --state-file " + stateFile, tempdir, L"coord", coordChild)) { std::printf("FAILED: spawn coordinator\n"); return 3; }
     if (!wait_for(coordChild.outPath, "READY", 10000)) { std::printf("FAILED: coordinator not ready\n"); return 4; }
     std::uint16_t coordPort = 0;
@@ -206,7 +223,6 @@ int main() {
     auto controller = TcpChannel::connect("127.0.0.1", coordPort);
     if (!controller) { std::printf("FAILED: controller connect\n"); return 6; }
 
-    Child workerA, workerB;
     const std::wstring wAargs = L"--coord-port " + std::to_wstring(coordPort) + L" --ctrl-port " + std::to_wstring(ctrlPort) + L" --boot 100 --name cudaA --mode A";
     const std::wstring wBargs = L"--coord-port " + std::to_wstring(coordPort) + L" --ctrl-port " + std::to_wstring(ctrlPort) + L" --boot 200 --name cudaB --mode B";
     if (!spawn(workerExe, wAargs, tempdir, L"wA", workerA)) { std::printf("FAILED: spawn A\n"); return 7; }
@@ -290,7 +306,6 @@ int main() {
       std::printf("phase4 stale handoff rejected before any CUDA launch\n");
     }
 
-    Child workerA2;
     const std::wstring wA2args = L"--coord-port " + std::to_wstring(coordPort) + L" --ctrl-port " + std::to_wstring(ctrlPort) + L" --boot 300 --name cudaA2 --mode A";
     if (!spawn(workerExe, wA2args, tempdir, L"wA2", workerA2)) { std::printf("FAILED: spawn A2\n"); return 22; }
     if (!wait_for(workerA2.outPath, "PUBLISHED cudaA2", 10000)) { std::printf("FAILED: A2 publish\n"); return 23; }

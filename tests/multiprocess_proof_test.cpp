@@ -4,7 +4,8 @@
 // talks to them over real loopback TCP using the framed protocol, and asserts:
 //   registration, candidate publication, deterministic scheduling (A wins),
 //   commit, execution handoff, worker death -> fencing -> old plan revalidation
-//   -> B wins, and stale replay rejection.
+//   -> B wins, stale replay rejection, and coordinator restart/recovery (fresh
+//   epoch, recovered plans not launchable, cancellation kept, no plan id reuse).
 #include "fabric_scheduler/scheduler.hpp"
 #include "fabric_scheduler/net.hpp"
 #include "fabric_scheduler/protocol.hpp"
@@ -190,7 +191,9 @@ std::vector<std::byte> encode_request(SchedulingRequestId id) {
     return w.take();
 }
 
-PlacementPlan submit_and_get_plan(TcpChannel& ch, SchedulingRequestId id) {
+// Submit a request; returns the plan, or nothing when the coordinator produced
+// none (the reason is left in `summary`).
+std::optional<PlacementPlan> try_submit(TcpChannel& ch, SchedulingRequestId id, std::string& summary) {
     auto [type, payload] = call(ch, MessageType::SUBMIT_WORKLOAD, encode_request(id));
     if (type != MessageType::PLACEMENT_PLAN)
         throw std::runtime_error("expected PLACEMENT_PLAN, got " +
@@ -198,10 +201,53 @@ PlacementPlan submit_and_get_plan(TcpChannel& ch, SchedulingRequestId id) {
     ByteReader r(payload);
     const std::uint8_t produced = r.get_u8();
     PlacementPlan plan = decode_plan_record(r);
-    const std::string summary = r.get_string();
-    if (produced == 0)
-        throw std::runtime_error("no plan produced: " + summary);
+    summary = r.get_string();
+    if (produced == 0) return std::nullopt;
     return plan;
+}
+
+PlacementPlan submit_and_get_plan(TcpChannel& ch, SchedulingRequestId id) {
+    std::string summary;
+    std::optional<PlacementPlan> plan = try_submit(ch, id, summary);
+    if (!plan) throw std::runtime_error("no plan produced: " + summary);
+    return *plan;
+}
+
+struct Hello { std::uint64_t epoch{0}; std::uint64_t candidates{0}; };
+
+Hello hello(TcpChannel& ch) {
+    auto [type, payload] = call(ch, MessageType::HELLO, {});
+    if (type != MessageType::HELLO) throw std::runtime_error("expected HELLO");
+    ByteReader r(payload);
+    Hello h;
+    h.epoch = r.get_u64();
+    h.candidates = r.get_u64();
+    return h;
+}
+
+void cancel_request(TcpChannel& ch, SchedulingRequestId id) {
+    ByteWriter w;
+    w.put_u64(id.value());
+    auto [type, payload] = call(ch, MessageType::CANCEL, w.take());
+    (void)payload;
+    if (type != MessageType::CANCEL) throw std::runtime_error("expected CANCEL ack");
+}
+
+void save_state(TcpChannel& ch) {
+    auto [type, payload] = call(ch, MessageType::SAVE, {});
+    (void)payload;
+    if (type != MessageType::SAVE) throw std::runtime_error("coordinator did not save its state");
+}
+
+TcpChannel connect_controller(std::uint16_t port) {
+    // Bounded startup wait for the coordinator to be connectable.
+    std::optional<TcpChannel> controller;
+    for (int i = 0; i < 5000 && !controller; ++i) {
+        controller = TcpChannel::connect("127.0.0.1", port);
+        if (!controller) Sleep(1);
+    }
+    if (!controller) throw std::runtime_error("coordinator did not become ready");
+    return std::move(*controller);
 }
 
 ResourceCommitResult commit_plan(TcpChannel& ch, PlacementPlanId pid) {
@@ -294,13 +340,15 @@ int main() {
     const std::wstring coordExe = selfDir + L"\\..\\..\\tools\\" + cfg + L"\\coordinator_main.exe";
     const std::wstring workerExe = selfDir + L"\\..\\..\\tools\\" + cfg + L"\\worker_main.exe";
 
-    Child coordinator, workerA, workerB;
+    Child coordinator, coordinator2, workerA, workerB, workerC;
     std::wstring stateFile;
 
     try {
         const std::uint16_t port = find_free_port();
         std::cout << "controller port = " << port << "\n";
         stateFile = temp + L"fabric_mp_state_" + std::to_wstring(port) + L".bin";
+        // A leftover file from an aborted run would be recovered as state.
+        DeleteFileW(stateFile.c_str());
 
         const std::wstring coordArgs =
             L"--port " + std::to_wstring(port) + L" --state-file \"" + stateFile + L"\"";
@@ -308,14 +356,7 @@ int main() {
             throw std::runtime_error("failed to spawn coordinator");
         std::cout << "spawned coordinator pid=" << coordinator.pid << "\n";
 
-        // Wait (bounded startup) for the coordinator to be connectable.
-        std::optional<TcpChannel> controller;
-        for (int i = 0; i < 5000 && !controller; ++i) {
-            controller = TcpChannel::connect("127.0.0.1", port);
-            if (!controller) Sleep(1);
-        }
-        if (!controller) throw std::runtime_error("coordinator did not become ready");
-        TcpChannel ctrl = std::move(*controller);
+        TcpChannel ctrl = connect_controller(port);
 
         if (!spawn(workerExe, L"--port " + std::to_wstring(port) +
                                   L" --name A --boot 100 --mode A",
@@ -364,41 +405,114 @@ int main() {
         if (!bWon) throw std::runtime_error("B did not win after A died");
         std::cout << "after A death, B won = 200\n";
 
+        // The plan that was active on the dead worker must be revalidated: it
+        // can no longer be handed off.
+        if (handoff_plan(ctrl, plan1.planId).authorized)
+            throw std::runtime_error("the dead worker's plan was handed off again");
+
         // 5) stale replay rejection.
         if (!stale_replay_rejected(ctrl))
             throw std::runtime_error("stale replay was not rejected");
 
-        // 6) clean shutdown.
+        // 6) coordinator restart/recovery. Request 7 is cancelled and request 8
+        //    is left planned but uncommitted; the state is saved and the
+        //    coordinator process is killed.
+        cancel_request(ctrl, SchedulingRequestId(7));
+        const PlacementPlan pending = submit_and_get_plan(ctrl, SchedulingRequestId(8));
+        const Hello before = hello(ctrl);
+        save_state(ctrl);
+        coordinator.kill();
+        std::cout << "saved state at epoch " << before.epoch << ", killed coordinator\n";
+
+        const std::uint16_t port2 = find_free_port();
+        const std::wstring coordArgs2 =
+            L"--port " + std::to_wstring(port2) + L" --state-file \"" + stateFile + L"\"";
+        if (!spawn(coordExe, coordArgs2, temp, L"coordinator2", coordinator2))
+            throw std::runtime_error("failed to spawn the restarted coordinator");
+        std::cout << "spawned restarted coordinator pid=" << coordinator2.pid << "\n";
+        TcpChannel ctrl2 = connect_controller(port2);
+
+        const Hello after = hello(ctrl2);
+        if (after.epoch <= before.epoch)
+            throw std::runtime_error("recovered coordinator did not advance the epoch (" +
+                                     std::to_string(before.epoch) + " -> " + std::to_string(after.epoch) + ")");
+        if (after.candidates != 0)
+            throw std::runtime_error("recovered coordinator kept candidate evidence as current");
+        // Recovered plans are never blindly usable.
+        if (commit_plan(ctrl2, pending.planId).succeeded)
+            throw std::runtime_error("a recovered plan was committed without revalidation");
+        if (handoff_plan(ctrl2, plan1.planId).authorized)
+            throw std::runtime_error("a recovered plan was handed off without revalidation");
+
+        // A fresh worker publishes to the recovered coordinator.
+        if (!spawn(workerExe, L"--port " + std::to_wstring(port2) +
+                                  L" --name C --boot 300 --mode A",
+                   temp, L"workerC", workerC))
+            throw std::runtime_error("failed to spawn worker C");
+        if (!wait_for_candidates(ctrl2, 1))
+            throw std::runtime_error("worker C candidate was not published");
+
+        // The cancelled request stays cancelled across recovery.
+        std::string summary;
+        if (try_submit(ctrl2, SchedulingRequestId(7), summary))
+            throw std::runtime_error("a cancelled request was planned after recovery");
+
+        // New work is planned under the fresh epoch without reusing a plan id.
+        const PlacementPlan fresh = submit_and_get_plan(ctrl2, SchedulingRequestId(9));
+        if (fresh.selectedCandidate != CandidateId(300))
+            throw std::runtime_error("expected C (300) after recovery, got " +
+                                     std::to_string(fresh.selectedCandidate.value()));
+        if (fresh.planId.value() <= pending.planId.value())
+            throw std::runtime_error("plan id " + std::to_string(fresh.planId.value()) +
+                                     " was reissued after recovery");
+        if (!commit_plan(ctrl2, fresh.planId).succeeded)
+            throw std::runtime_error("commit failed after recovery");
+        if (!handoff_plan(ctrl2, fresh.planId).authorized)
+            throw std::runtime_error("handoff not authorized after recovery");
+        std::cout << "recovered at epoch " << after.epoch << ", fresh plan " << fresh.planId.value()
+                  << " on C = 300 committed and handed off\n";
+
+        // 7) clean shutdown.
         try {
-            call(ctrl, MessageType::SHUTDOWN, {});
+            call(ctrl2, MessageType::SHUTDOWN, {});
         } catch (...) {
             // Coordinator may close immediately; that is fine.
         }
 
         std::cout << "multiprocess proof PASS\n";
         coordinator.kill();
+        coordinator2.kill();
         workerA.kill();
         workerB.kill();
+        workerC.kill();
         DeleteFileW(stateFile.c_str());
         remove_logs(coordinator);
+        remove_logs(coordinator2);
         remove_logs(workerA);
         remove_logs(workerB);
+        remove_logs(workerC);
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "multiprocess proof FAIL: " << e.what() << "\n";
         dump_file(coordinator.errPath);
         dump_file(workerA.errPath);
         dump_file(workerB.errPath);
+        dump_file(coordinator2.errPath);
         dump_file(coordinator.outPath);
+        dump_file(coordinator2.outPath);
         dump_file(workerA.outPath);
         dump_file(workerB.outPath);
         coordinator.kill();
+        coordinator2.kill();
         workerA.kill();
         workerB.kill();
+        workerC.kill();
         DeleteFileW(stateFile.c_str());
         remove_logs(coordinator);
+        remove_logs(coordinator2);
         remove_logs(workerA);
         remove_logs(workerB);
+        remove_logs(workerC);
         return 1;
     }
 }

@@ -3,12 +3,21 @@
 #include "fabric_scheduler/adapters/execution.hpp"
 #include "fabric_scheduler/adapters/dependency.hpp"
 #include "fabric_scheduler/revalidation.hpp"
-#include <cassert>
 #include <iostream>
 #include <string>
 #include <vector>
 
 using namespace fabric;
+
+// Checks that stay active in every configuration: assert() is compiled out
+// under NDEBUG, which left this test without any check in a Release build.
+#define REQUIRE(cond)                                                          \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            std::cerr << "REQUIRE failed at line " << __LINE__ << ": " #cond "\n"; \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
 
 namespace {
 
@@ -152,47 +161,47 @@ int main() {
     Candidate b = make_candidate(CandidateId(2), WorkerBootId(11), SourceBootId(21), MemoryDomainId(2), 3, 8_GiB, 8_GiB, 0.0, CongestionGeneration(1), true);
     sched.ingest_candidate(a);
     sched.ingest_candidate(b);
-    assert(sched.candidate_count() == 2);
+    REQUIRE(sched.candidate_count() == 2);
 
     SchedulingRequest req = make_request(SchedulingRequestId(1), WorkloadDemandId(1));
     AlwaysReadyDependency dep;
     AllowAllPolicy pol;
     PlacementDecision d = sched.schedule(req, &dep, &pol);
-    assert(d.producedPlan);
-    assert(d.eligible.size() == 2);
-    assert(d.plan.selectedCandidate == CandidateId(1));
+    REQUIRE(d.producedPlan);
+    REQUIRE(d.eligible.size() == 2);
+    REQUIRE(d.plan.selectedCandidate == CandidateId(1));
     std::cout << "schedule selected: " << d.plan.selectedCandidate.value() << "\n";
 
     TestBroker broker;
     ResourceCommitResult cr = sched.commit(d.plan.planId, broker);
-    assert(cr.succeeded);
-    assert(sched.plan_state(d.plan.planId) == PlacementLifecycleState::COMMITTED);
+    REQUIRE(cr.succeeded);
+    REQUIRE(sched.plan_state(d.plan.planId) == PlacementLifecycleState::COMMITTED);
 
     ReferenceExecutionAdapter exec(AuthorityGeneration(1));
     ExecutionHandoff h = sched.handoff(d.plan.planId, exec);
-    assert(h.authorized);
-    assert(sched.plan_state(d.plan.planId) == PlacementLifecycleState::ACTIVE);
+    REQUIRE(h.authorized);
+    REQUIRE(sched.plan_state(d.plan.planId) == PlacementLifecycleState::ACTIVE);
 
     // congestion race
     auto planA = sched.plan(d.plan.planId);
-    assert(planA.has_value());
+    REQUIRE(planA.has_value());
     GenerationFingerprint current = planA->generations;
     current.congestion = CongestionGeneration(2);
     current.capacity = CapacityGeneration(2);
     RevalidationResult rr = sched.revalidate(d.plan.planId, current);
-    assert(!rr.current);
-    assert(sched.plan_state(d.plan.planId) == PlacementLifecycleState::REVALIDATION_REQUIRED);
+    REQUIRE(!rr.current);
+    REQUIRE(sched.plan_state(d.plan.planId) == PlacementLifecycleState::REVALIDATION_REQUIRED);
 
     Candidate a2 = make_candidate(CandidateId(1), WorkerBootId(10), SourceBootId(20), MemoryDomainId(1), 1, 16_GiB, 16_GiB, 0.95, CongestionGeneration(2), true);
     a2.candidateGeneration = CandidateGeneration(2);
     sched.ingest_candidate(a2);
     PlacementDecision d2 = sched.schedule(make_request(SchedulingRequestId(2), WorkloadDemandId(2)), &dep, &pol);
-    assert(d2.producedPlan);
-    assert(d2.plan.selectedCandidate == CandidateId(2));
+    REQUIRE(d2.producedPlan);
+    REQUIRE(d2.plan.selectedCandidate == CandidateId(2));
 
     ExecutionHandoff h2 = sched.handoff(d.plan.planId, exec);
-    assert(!h2.authorized);
-    assert(broker.commits >= 1);
+    REQUIRE(!h2.authorized);
+    REQUIRE(broker.commits >= 1);
 
     std::cout << "scheduler pipeline test PASS\n";
     return 0;
